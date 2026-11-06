@@ -37,6 +37,7 @@ Some edits need the user's confirmation first: the tool result then asks you to 
 Each task is new, so previousTasks carries that call as awaitingConfirmation. If the user now agrees, first read the document, then make exactly that call again with identical arguments (only expectedSessionId/expectedRevision may change). If they decline or ask for something else, do not make it.
 If tools fail, say what failed. Do not invent web sources or claim research: only tools actually provided are available.
 All your text deltas are public progress/answers that the user sees. Never think aloud: do not reason, plan, or quote block ids in text. Before and between tool calls write nothing, or at most one short sentence in the user's language. A final response is completion only when the user's task is fulfilled.
+Only your final reply reaches the user: text written before or between tool calls is never shown or read aloud, so write none there and call the tool directly.
 Write every word of text in the user's language, also before and between tool calls. Never write notes to yourself in English or any other language, such as "The second paragraph is p2", "The user wants only…" or "I'll retry with…": decide silently and call the tool.`;
 
 interface PendingTool { name: string; arguments: unknown; resolve(value: unknown): void; reject(error: Error): void }

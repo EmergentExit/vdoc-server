@@ -15,6 +15,13 @@ describe('RiskAssessor', () => {
     expect(assessor.assess(call('apply_document_operations', ops('text.styleMatches'))).risk).toBe('low');
   });
 
+  it('rates find-and-replace kept inside named blocks like replacing text, and across the document as high', () => {
+    const findReplace = (extra: Record<string, unknown>) => call('apply_document_operations', { operations: [{ type: 'text.findReplace', query: '模型', replacement: '系统', ...extra }] });
+    expect(assessor.assess(findReplace({ blockIds: ['p1', 'p2'] }))).toEqual({ risk: 'medium', operations: ['text.findReplace:blocks'] });
+    expect(assessor.assess(findReplace({})).risk).toBe('high');
+    expect(assessor.assess(findReplace({ blockIds: [] })).risk).toBe('high');
+  });
+
   it('rates deleting one block like deleting its text, and deleting several as high', () => {
     expect(assessor.assess(call('apply_document_operations', ops('block.delete'))).risk).toBe('medium');
     expect(assessor.assess(call('apply_document_operations', ops('block.delete', 'block.delete'))).risk).toBe('high');
