@@ -19,7 +19,7 @@ Three-minute hackathon product video script | English narration | Target length:
 ## 0:00–0:20 | Opening: the problem
 
 **Visual**
-A black background slowly reveals a blank document. Quick cuts: typing, deleting, adjusting formatting, copying and pasting, revising again and again. Keyboard clicks are audible as the background music fades in.
+A history of the keyboard in about 20 seconds. A locked top-down camera shows one photorealistic keyboard at a time, each physically transforming into the next: 1870s typewriter → 1960s electric typewriter → 1980s mechanical PC keyboard → 2000s phone thumb keyboard → 2007 touchscreen keyboard → modern ultra-thin wireless keyboard. A small year label appears for each era. Finally the keys of the modern keyboard sink away, and the keyboard dissolves into light that forms the VDoc voice bar. There is no keyboard left. The sound of each era's keystrokes leads into the background music.
 
 **Narration**
 > "Every great document starts with an idea.
@@ -33,7 +33,7 @@ WHAT IF YOUR DOCUMENT COULD LISTEN?
 ## 0:20–0:40 | Introducing VDoc
 
 **Visual**
-The music builds. The full VDoc interface fades in. The camera glides from the editor down to the microphone button at the bottom, and the VDoc logo appears at the center of the screen.
+The music builds. A rainbow glow travels one full loop around the voice bar, and the bar settles with a small spring. A mouse pointer clicks the microphone button. The bar shrinks as the camera pulls back to reveal a blank document page, and "Hello, World." appears on it. Cut to the full VDoc interface, and the VDoc logo appears at the center of the screen.
 
 **Narration**
 > "Introducing VDoc.
