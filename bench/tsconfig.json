@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2024", "DOM", "DOM.Iterable"], "types": ["node"] },
+  "include": ["src/**/*.ts"],
+  // Bundled against the pinned vdoc checkout by build-host.ts, which owns their types.
+  "exclude": ["src/host/worker.ts", "src/host/dom.ts"]
+}
