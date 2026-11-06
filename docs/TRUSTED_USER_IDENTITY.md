@@ -2,7 +2,7 @@
 
 ## Baseline and dependency
 
-This implements [signed-in user attribution #4](https://github.com/Q-cell2/vdoc-server/issues/4) on top of [principal quotas PR #22](https://github.com/Q-cell2/vdoc-server/pull/22), using server main `104be6c` (SDK 0.2.0 integration PR #23). The app counterpart is based on [vdoc SDK integration PR #100](https://github.com/Q-cell2/vdoc/pull/100), commit `25e1c68`. Both ends use `@vrealtime/* 0.2.0`; this change does not modify SDK versions or adapters.
+This implements [signed-in user attribution #4](https://github.com/EmergentExit/vdoc-server/issues/4) on top of [principal quotas PR #22](https://github.com/EmergentExit/vdoc-server/pull/22), using server main `104be6c` (SDK 0.2.0 integration PR #23). The app counterpart is based on [vdoc SDK integration PR #100](https://github.com/EmergentExit/vdoc/pull/100), commit `25e1c68`. Both ends use `@vrealtime/* 0.2.0`; this change does not modify SDK versions or adapters.
 
 Issue #4 originally suggested direct identity-provider JWT authentication. The implementation taskbook instead specifies reusing existing service authentication when no signed user assertion is already deployed: vdoc already validates Better Auth login and document ACL, so the verified application asserts its stable user ID over HTTPS. There is one application trust boundary rather than a second identity-provider integration in the voice backend.
 
