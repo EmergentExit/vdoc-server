@@ -23,7 +23,7 @@ import { energyVad } from '@vrealtime/vad';
 
 const WORKER_SOURCE = resolve(dirname(fileURLToPath(import.meta.url)), '../../packages/adapters/vrt/src/worker/delegated-model.ts');
 /** Lines that only make sense for a worker behind a voice front end. */
-const HANDOFF_ONLY = /agent behind a voice assistant|envelope|userUpdate|previousTasks|awaitingConfirmation/;
+const HANDOFF_ONLY = /agent behind a voice assistant|envelope|userUpdate|previousTasks|awaitingConfirmation|Only your final reply reaches the user/;
 
 /** The worker's editing rules, as S2 receives them. */
 export function workerEditingRules(): string {

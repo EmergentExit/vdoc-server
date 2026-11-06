@@ -31,6 +31,8 @@ export const VDOC_RISK_TABLE: OperationRiskTable = Object.freeze<OperationRiskTa
   batchTools: ['apply_document_operations'],
   operations: {
     'text.findReplace': 'high', 'table.edit:deleteTable': 'high',
+    // Replacing inside named blocks only changes those blocks, like text.replace; across the whole document it stays high.
+    'text.findReplace:blocks': 'medium',
     // One paragraph or list item, like text.delete; deleting several blocks at once is high (highRiskWhenRepeated).
     'block.delete': 'medium',
     'text.delete': 'medium', 'text.replace': 'medium', 'text.clear': 'medium', 'block.move': 'medium',
@@ -68,7 +70,8 @@ export class RiskAssessor {
 }
 
 function describe(operation: unknown): string {
-  const { type, action } = (operation ?? {}) as { type?: unknown; action?: unknown };
+  const { type, action, blockIds } = (operation ?? {}) as { type?: unknown; action?: unknown; blockIds?: unknown };
   if (typeof type !== 'string') return 'unknown';
+  if (type === 'text.findReplace' && Array.isArray(blockIds) && blockIds.length > 0) return `${type}:blocks`;
   return typeof action === 'string' ? `${type}:${action}` : type;
 }
