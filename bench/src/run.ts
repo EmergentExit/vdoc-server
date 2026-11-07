@@ -26,6 +26,7 @@ import { recordModelRequests } from './model-requests';
 import { runCost } from './pricing';
 import { loadBench, type Task } from './neutral';
 import { ConfiguredServer, runTask, type RunRecord } from './runner';
+import { speak } from './tts';
 import { random, shuffled } from './stats';
 import { rulesHash, workerEditingRules } from './s2-aligned';
 
@@ -101,13 +102,15 @@ async function main() {
   const servers = new Map<string, ConfiguredServer>();
   for (const config of configs) servers.set(config.id, await ConfiguredServer.start(config, process.env));
   const autoConfirm = arg('no-confirm') !== 'true';
+  // --voice: every user line is synthesized once and spoken into a live microphone instead of typed.
+  const speech = arg('voice') === 'true' ? (text: string) => speak(text) : undefined;
   const next = random(SEED), base = versions({ worker_model: process.env.VDOC_SERVER_WORKER_MODEL ?? 'claude-haiku-5-5 (default)', code_matches_github: online.problems.length ? 'no' : 'yes', auto_confirm: autoConfirm ? 'yes' : 'no' });
   console.log(`${tasks.length} task(s) × ${repeats} repeat(s) × ${configs.length} configuration(s) → ${out}`);
   let done = 0, spent = 0;
   const disabled = new Map<string, string>();
   runs: for (let repeat = 0; repeat < repeats; repeat++) for (const task of tasks) for (const config of shuffled(configs, next)) {
     if (done_.has(runKey(config.id, task.task_id, repeat)) || disabled.has(config.id)) continue;
-    const record = await runTask(bench, task, servers.get(config.id)!, host, { repeatIndex: repeat, seed: SEED, autoConfirm, versions: { ...base, ...config.env, ...(config.variant ? { variant: config.variant, s2_rules_sha: rulesHash(workerEditingRules()) } : {}) } });
+    const record = await runTask(bench, task, servers.get(config.id)!, host, { repeatIndex: repeat, seed: SEED, autoConfirm, ...(speech ? { speech } : {}), versions: { ...base, ...config.env, ...(config.variant ? { variant: config.variant, s2_rules_sha: rulesHash(workerEditingRules()) } : {}) } });
     // A provider that refuses (bad key, no credit) refuses every later run too: stop that configuration, keep the rest.
     const refused = providerRefused(record);
     if (refused) {

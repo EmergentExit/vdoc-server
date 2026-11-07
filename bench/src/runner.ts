@@ -13,6 +13,7 @@ import type { VdocHost } from './host/client';
 import { alignedS2Registry } from './s2-aligned';
 import { modelRequests } from './model-requests';
 import type { Bench, Doc, Task } from './neutral';
+import { microphone } from './tts';
 
 const CLIENT_KEY = 'vdocs-bench-client-key-0123456789';
 /** README §3.3: from the moment the text is sent. */
@@ -56,8 +57,10 @@ export class ConfiguredServer {
 
 /** One line of the results file (README §3.6). */
 export interface RunRecord {
-  run_id: string; task_id: string; benchmark_version: string; system_config_id: string; input_mode: 'text';
+  run_id: string; task_id: string; benchmark_version: string; system_config_id: string; input_mode: 'text' | 'voice';
   repeat_index: number; seed: number; started_at: string;
+  /** Voice runs: what the server transcribed of each spoken user turn, final transcripts in order. */
+  heard?: string[];
   versions: Record<string, string>;
   initial_hash: string;
   instruction: string;
@@ -103,6 +106,9 @@ export interface RunOptions {
   repeatIndex: number; seed: number; versions: Record<string, string>; beforeSend?: (host: VdocHost) => Promise<void>;
   /** Answer governance's confirmation requests (default true). */
   autoConfirm?: boolean;
+  /** Voice runs: speech for a user line. Every user turn is then spoken into a live microphone instead of typed,
+   * and latency counts from the end of the spoken instruction. */
+  speech?: (text: string) => Promise<Uint8Array>;
 }
 
 /** Runs one task once: fresh document, fresh voice session, history turns, the instruction, then scoring. */
@@ -120,21 +126,32 @@ export async function runTask(bench: Bench, task: Task, server: ConfiguredServer
   session.on('tool.call', touch);
   session.on('tool.result', touch);
   session.on('error', event => { touch(); active = true; clientErrors.push({ t: performance.now(), code: event.code, message: event.message }); });
+  const heard: string[] = [];
+  session.on('transcript', event => { touch(); if (event.role === 'user' && event.final && event.text.trim()) heard.push(event.text); });
+  const mic = options.speech ? microphone(frame => { if (session.connected) session.sendAudio(frame); }) : undefined;
+  /** The user says (or types) a line; resolves when they have finished saying it. */
+  const userSays = async (text: string): Promise<number> => {
+    if (!mic || !options.speech) { session.sendText(text); return performance.now(); }
+    const audio = await options.speech(text);
+    return mic.say(audio);
+  };
 
   const isWriting = task.evaluation_mode !== 'deterministic';
   const timeout = isWriting ? TIMEOUTS.writing : TIMEOUTS.edit;
   let outcome: RunRecord['outcome'] = 'completed', error: string | undefined;
   // Fixed history is sent as earlier user turns, the same way for every system.
   for (const turn of task.history.filter(t => t.role === 'user')) {
-    active = false; session.sendText(turn.content); touch();
+    active = false; await userSays(turn.content); touch();
     if (await settled(session, host, () => active, () => lastActivity, performance.now() + timeout) === null) { outcome = 'timeout'; error = 'history turn timed out'; }
   }
   const callsBefore = host.calls.length, eventsBefore = server.events.length, logsBefore = server.logs.length, requestsBefore = modelRequests.length;
   agentText = ''; firstText = null; clientErrors.length = 0;
   await options.beforeSend?.(host);
-  const startedAt = new Date().toISOString(), sentAt = performance.now();
+  const startedAt = new Date().toISOString();
+  heard.length = 0;
+  active = false;
+  const sentAt = await userSays(task.instruction_text); touch();
   const since = (t: number | undefined | null) => (t === undefined || t === null ? null : Math.round(t - sentAt));
-  active = false; session.sendText(task.instruction_text); touch();
   let end = outcome === 'completed' ? await settled(session, host, () => active, () => lastActivity, sentAt + timeout) : null;
   if (end === null && outcome === 'completed') outcome = 'timeout';
   // A turn that ended on a confirmation request gets the user's "yes", once per request, the same for every system.
@@ -143,8 +160,8 @@ export async function runTask(bench: Bench, task: Task, server: ConfiguredServer
   const askedSince = () => { const asked = server.events.slice(checked).find(({ value }) => value.type === 'ToolCallReviewed' && (value as unknown as { decision?: string }).decision === 'confirm'); checked = server.events.length; return asked?.at; };
   for (let asked = askedSince(); options.autoConfirm !== false && outcome === 'completed' && asked !== undefined && confirmations.length < MAX_CONFIRMATIONS; asked = askedSince()) {
     beforeConfirmation ??= (await host.export()).doc;
-    const answered = performance.now();
-    active = false; session.sendText(isCjk(task.instruction_text) ? '确认。' : 'Yes, go ahead.'); touch();
+    active = false;
+    const answered = await userSays(isCjk(task.instruction_text) ? '确认。' : 'Yes, go ahead.'); touch();
     const ended = await settled(session, host, () => active, () => lastActivity, answered + timeout);
     confirmations.push({ asked: since(asked)!, answered: since(answered)!, ended: since(ended) });
     if (ended === null) { outcome = 'timeout'; end = null; break; }
@@ -155,6 +172,7 @@ export async function runTask(bench: Bench, task: Task, server: ConfiguredServer
   await sleep(LATE_WRITE_MS);
   const lateWrites = host.calls.filter(c => c.committed && c.ok).length - writesBefore;
   if (lateWrites) final = await host.export();
+  mic?.stop();
   await session.close().catch(() => {});
 
   const calls = host.calls.slice(callsBefore);
@@ -163,8 +181,8 @@ export async function runTask(bench: Bench, task: Task, server: ConfiguredServer
   const requests = modelRequests.slice(requestsBefore).filter(r => r.startedAt >= sentAt);
   const doc = final?.doc ?? [];
   return {
-    run_id: runId, task_id: task.task_id, benchmark_version: bench.version, system_config_id: server.config.id, input_mode: 'text',
-    repeat_index: options.repeatIndex, seed: options.seed, started_at: startedAt,
+    run_id: runId, task_id: task.task_id, benchmark_version: bench.version, system_config_id: server.config.id, input_mode: options.speech ? 'voice' : 'text',
+    repeat_index: options.repeatIndex, seed: options.seed, started_at: startedAt, ...(options.speech ? { heard: [...heard] } : {}),
     versions: options.versions, initial_hash: hash(initial), instruction: task.instruction_text, outcome, ...(error ? { error } : {}),
     latency: {
       first_tool_call: since(calls[0]?.startedAt), first_read: since(calls.find(c => c.name.startsWith('read') || c.name === 'get_context')?.startedAt),

@@ -1,7 +1,9 @@
 import { Emitter, type AudioFormat, type EventOf, type EventType, type RealtimeEvent, type RealtimeModel, type RealtimeSession, type SessionConfig } from '@vrealtime/core';
 import { fingerprint, HIGH_RISK_CONFIRMATION_MESSAGE } from '@vdoc-server/domain';
 import type { WorkerEvent, WorkerRunner } from './pi-worker';
+import type { Talker } from './talker';
 import { quickIntent, type UtteranceIntent, type UtteranceJudge } from './utterance-judge';
+import type { UtteranceRouter } from './utterance-router';
 
 const speechControls = new WeakMap<RealtimeSession, (id: string) => void>();
 export function finishWorkerSpeech(session: RealtimeSession, id: string): boolean {
@@ -41,9 +43,30 @@ Only your final reply reaches the user: text written before or between tool call
 Write every word of text in the user's language, also before and between tool calls. Never write notes to yourself in English or any other language, such as "The second paragraph is p2", "The user wants only…" or "I'll retry with…": decide silently and call the tool.`;
 
 interface PendingTool { name: string; arguments: unknown; resolve(value: unknown): void; reject(error: Error): void }
-interface PastTask { request: string; reply: string; awaitingConfirmation?: { tool: string; arguments: unknown } }
+interface PastTask { request: string; reply: string; awaitingConfirmation?: { tool: string; arguments: unknown }; by?: 'talker' }
+/** With a conversation, a router sends turns that are not edits away from Pi to the talker. */
+export interface Conversation {
+  router: UtteranceRouter;
+  talker: Talker;
+  /** The voice talks for itself (GPT-Live): it answers small talk on its own and says replies in its own words. */
+  voiceTalks?: boolean;
+}
+
+/** For a voice that talks for itself. The server does the work and hands it the results to say. */
+export const VOICE_INSTRUCTIONS = `你是一个中文语音写作助手，用户正在编辑一篇文档（常常是论文）。用自然、简短的中文口语交流，一次只说一两句。
+你自己不能修改文档，也看不到文档。用户要求修改文档时，只说一句很短的确认（比如"好，我来改"），不要编造内容，绝不说已经改好。
+用户问文档内容或想讨论写作时，只说一句"我看一下"之类的话，然后等待。
+系统会把真正的结果作为要你说的话交给你：收到后，用自己的话简短、准确地告诉用户，不要增删事实。
+闲聊直接用一句话回答。`;
 interface Run {
   controller: AbortController;
+  /** Pi's own signal: aborted when the turn goes to the talker, while the turn itself goes on. */
+  worker: AbortController;
+  /** The talker answers this turn; Pi has been stopped. */
+  talking?: boolean;
+  /** The latest read_document result this turn received, and who waits for the next tool result. */
+  read?: unknown;
+  onResult?: () => void;
   responseId?: string;
   dispatched: number;
   completedWrites: number;
@@ -79,18 +102,25 @@ function pcm16Level(data: Uint8Array): number {
   for (let index = 0; index < samples; index++) { const sample = (data[2 * index]! | data[2 * index + 1]! << 8) << 16 >> 16; sum += sample * sample; }
   return samples ? Math.sqrt(sum / samples) : 0;
 }
+/** How long a voice that talks for itself gets to start saying a reply it was handed. */
+const VOICE_REPLY_WAIT_MS = 8000;
 const WRITE_TOOLS = ['insert_structured_article', 'insert_test_table', 'delete_test_blocks', 'apply_document_operations', 'undo_turn', 'create_test_document'];
 
 /** Pi owns the agent loop; vRT remains the audited transport/executor for actual tools.
  * The server starts Pi from the user's final transcript (or typed text) and has Higgs read Pi's reply.
  */
-export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeoutMs = 90_000, transcriptTimeoutMs = 15_000, judge?: UtteranceJudge): RealtimeModel {
+export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeoutMs = 90_000, transcriptTimeoutMs = 15_000, judge?: UtteranceJudge, conversation?: Conversation): RealtimeModel {
   const capabilities = { ...actor.capabilities, tools: { ...actor.capabilities.tools, autoReplyAfterResult: true } };
   return {
     provider: 'boson-worker', id: actor.id, capabilities,
     async connect(initial, options) {
       let config = initial;
-      const performer = await actor.connect(actorConfig(initial), options);
+      const voiceTalks = conversation?.voiceTalks === true;
+      const performer = await actor.connect(actorConfig(initial, voiceTalks), options);
+      /** The voice's own replies passed through to the user (voiceTalks only). */
+      const voiceReplies = new Set<string>();
+      /** Ends a turn whose reply was handed to the voice, if the voice never says it. */
+      let voiceTimer: ReturnType<typeof setTimeout> | undefined;
       const emitter = new Emitter<RealtimeEvent>();
       let closed = false;
       /** Pi's task. */
@@ -184,7 +214,7 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         emit({ type: 'output.text', responseId: run.responseId, delta: `${INTERJECTION_PREFIX}${outcome}\n` });
       };
       const workerEvent = (run: Run, event: WorkerEvent) => {
-        if (!live(run)) return;
+        if (!live(run) || run.talking) return;
         if (event.type === 'start') {
           if (!run.responseId) {
             run.responseId = `worker-${crypto.randomUUID()}`;
@@ -209,7 +239,7 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         clearTranscriptTimer(); stopEndingAudio(); speechPending = false; manuallyFinished = false;
         lastCompletedWrites = 0;
         const controller = new AbortController();
-        const run: Run = { controller, request, updates, dispatched: 0, completedWrites: 0, pending: new Map(), timer: setTimeout(() => fail(run), timeoutMs), document: {} };
+        const run: Run = { controller, worker: new AbortController(), request, updates, dispatched: 0, completedWrites: 0, pending: new Map(), timer: setTimeout(() => fail(run), timeoutMs), document: {} };
         active = run;
         run.responseId = `worker-${crypto.randomUUID()}`;
         emit({ type: 'response.start', responseId: run.responseId });
@@ -218,7 +248,7 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         const prompt = JSON.stringify({ previousTasks: history, userRequest: request, ...(updates.length ? { userUpdates: updates } : {}), requestSource: inputKind === 'text' ? 'typed' : 'final-transcript' });
         const tools = config.tools ?? [];
         void worker.run({ instructions: `${config.instructions ?? ''}\n\n${WORKER_INSTRUCTIONS}`, prompt, tools }, {
-          signal: controller.signal,
+          signal: AbortSignal.any([controller.signal, run.worker.signal]),
           emit: event => workerEvent(run, event),
           onSteer(listener) {
             run.steer = listener;
@@ -234,7 +264,7 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
             });
           },
         }).then(reply => {
-          if (!live(run)) return;
+          if (!live(run) || run.talking) return;
           if (!run.responseId || reply.length > 4000) { fail(run); return; }
           const responseId = run.responseId;
           clearTimeout(run.timer);
@@ -246,7 +276,71 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
           if (history.length > 8) history.shift();
           // No tool calls in the final Pi response: pause asks vRT for the next response, which speaks the reply.
           emit({ type: 'response.end', responseId, status: 'done', stopReason: 'pause' });
-        }).catch(() => fail(run));
+        }).catch(() => { if (!run.talking) fail(run); });
+        // Pi starts at once; the route only decides whether it carries on, so an edit never waits for it.
+        if (conversation) void talkInstead(run, conversation);
+      };
+      /** Hands a turn that is not an edit to the talker, unless Pi has already started writing. */
+      const talkInstead = async (run: Run, { router, talker }: Conversation) => {
+        const route = await router.route(run.request, history.length ? { lastReply: history.at(-1)!.reply } : {}, run.controller.signal);
+        if (route === 'act' || !live(run) || run.completedWrites || [...run.pending.values()].some(entry => WRITE_TOOLS.includes(entry.name))) return;
+        run.talking = true;
+        run.worker.abort();
+        delete run.steer;
+        if (route === 'chat' && voiceTalks) { await endQuietly(run); return; }
+        // Pi's reads still out belong to its open response: end it as Pi would and let them come back,
+        // so the runtime sees every call settled before the talker's response starts.
+        if (run.responseId && run.dispatched) {
+          emit({ type: 'response.end', responseId: run.responseId, status: 'done', stopReason: 'tool_calls' });
+          delete run.responseId;
+        }
+        await settled(run);
+        const document = route === 'discuss' ? run.read : undefined;
+        if (!live(run)) return;
+        if (!run.responseId) {
+          run.responseId = `talker-${crypto.randomUUID()}`;
+          emit({ type: 'response.start', responseId: run.responseId });
+        }
+        const responseId = run.responseId;
+        let reply: string;
+        try {
+          reply = await talker.reply({
+            route, utterance: [run.request, ...run.updates].join('\n'), ...(document !== undefined ? { document } : {}),
+            conversation: history.map(task => ({ request: task.request, reply: task.reply, by: task.by ?? 'worker' })),
+          }, { signal: run.controller.signal, emit: delta => { if (live(run)) emit({ type: 'output.text', responseId, delta }); } });
+        } catch {
+          fail(run);
+          return;
+        }
+        if (!live(run)) return;
+        clearTimeout(run.timer);
+        active = undefined;
+        pendingReply = reply; lastCompletedWrites = 0;
+        history.push({ request: run.request.slice(0, 2000), reply: reply.slice(0, 1200), by: 'talker' });
+        if (history.length > 8) history.shift();
+        emit({ type: 'response.end', responseId, status: 'done', stopReason: 'pause' });
+      };
+      /** Small talk the voice answers on its own: Pi stops, and the turn ends without a reply of ours. */
+      const endQuietly = async (run: Run) => {
+        if (run.responseId && run.dispatched) {
+          emit({ type: 'response.end', responseId: run.responseId, status: 'done', stopReason: 'tool_calls' });
+          delete run.responseId;
+        }
+        await settled(run);
+        if (!live(run)) return;
+        const responseId = run.responseId ?? `talker-${crypto.randomUUID()}`;
+        if (!run.responseId) emit({ type: 'response.start', responseId });
+        clearTimeout(run.timer);
+        active = undefined;
+        emit({ type: 'response.end', responseId, status: 'done', stopReason: 'completed' });
+      };
+      /** Waits, briefly, until every call Pi made this turn has its result. */
+      const settled = async (run: Run) => {
+        const deadline = Date.now() + 1500;
+        while (run.pending.size && live(run) && Date.now() < deadline) {
+          await new Promise<void>(resolve => { run.onResult = resolve; setTimeout(resolve, deadline - Date.now()); });
+        }
+        delete run.onResult;
       };
       /**
        * The user's yes replays the call held back in the previous task. Pi often copies it with the
@@ -340,6 +434,13 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         maybeBegin();
       });
       listen('response.start', event => {
+        if (voiceTalks) {
+          // Everything the voice says reaches the user; the turn waits while work is still under way.
+          clearTimeout(voiceTimer); voiceTimer = undefined;
+          voiceReplies.add(event.responseId);
+          emit(event);
+          return;
+        }
         if (expectSpeech && !retiredResponses.has(event.responseId)) {
           expectSpeech = false; speech = event.responseId;
           emit(event);
@@ -349,9 +450,15 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         if (event.responseId === speech || retiredResponses.has(event.responseId)) return;
         retire(event.responseId); performer.cancel();
       });
-      listen('output.audio', event => { if (event.responseId === speech) emit(event); });
-      listen('output.transcript', event => { if (event.responseId === speech) emit(event); });
+      listen('output.audio', event => { if (event.responseId === speech || voiceReplies.has(event.responseId)) emit(event); });
+      listen('output.transcript', event => { if (event.responseId === speech || voiceReplies.has(event.responseId)) emit(event); });
       listen('response.end', event => {
+        if (voiceReplies.delete(event.responseId)) {
+          if (event.status !== 'done') { emit(event); return; }
+          // A pause keeps the turn open for work still to come; with nothing left, this reply ends it.
+          emit({ ...event, stopReason: active || pendingReply !== undefined || voiceTimer ? 'pause' : 'completed' });
+          return;
+        }
         if (event.responseId !== speech) return;
         speech = undefined;
         // The user talking over the spoken reply cancels it; the task itself already succeeded.
@@ -400,7 +507,15 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
         clearAudio: () => performer.clearAudio(),
         sendText(text) { const speaking = speech !== undefined; stop(); if (speaking) performer.cancel(); inputKind = 'text'; lastUserText = text; speechEnded = true; },
         respond() {
-          if (pendingReply !== undefined) {
+          if (pendingReply !== undefined && voiceTalks) {
+            // The voice says it in its own words; its next reply ends the turn. If it stays silent, the
+            // text is already on the page, and the turn ends on its own.
+            const reply = pendingReply;
+            pendingReply = undefined;
+            performer.sendText(reply);
+            clearTimeout(voiceTimer);
+            voiceTimer = setTimeout(() => { voiceTimer = undefined; if (!active && pendingReply === undefined) notice('completed'); }, VOICE_REPLY_WAIT_MS);
+          } else if (pendingReply !== undefined) {
             const reply = pendingReply;
             pendingReply = undefined; expectSpeech = true;
             performer.sendText(`${READ_ALOUD_PREFIX}${reply}`);
@@ -417,10 +532,12 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
           Object.assign(active!.document, reportedVersion(output));
           if (WRITE_TOOLS.includes(pending.name) && typeof output === 'object' && output !== null && 'ok' in output && output.ok === true) active!.completedWrites++;
           if (JSON.stringify(output ?? null).includes(HIGH_RISK_CONFIRMATION_MESSAGE)) active!.awaitingConfirmation = { tool: pending.name, arguments: pending.arguments };
+          if (pending.name === 'read_document') active!.read = output;
           pending.resolve(output);
+          active!.onResult?.();
         },
         on: (type, listener) => emitter.on(type, listener),
-        async close() { stop(); clearUnheard(); speechControls.delete(session); closed = true; for (const off of unsubscribers) off(); emitter.clear(); await performer.close(); },
+        async close() { stop(); clearUnheard(); clearTimeout(voiceTimer); speechControls.delete(session); closed = true; for (const off of unsubscribers) off(); emitter.clear(); await performer.close(); },
       };
       speechControls.set(session, id => {
         if (controls.has(id) || closed) return;
@@ -451,6 +568,6 @@ export function delegatedModel(actor: RealtimeModel, worker: WorkerRunner, timeo
 function replyFailure(status: string | undefined, stopReason: string | undefined, detail: string): string {
   return ` [${[status && `status=${status}`, stopReason && `stopReason=${stopReason}`, detail].filter(Boolean).join(', ')}]`;
 }
-function actorConfig(config: SessionConfig): SessionConfig {
-  return { ...config, turnDetection: config.turnDetection === null ? null : 'server', instructions: SPEAKER_INSTRUCTIONS, tools: [] };
+function actorConfig(config: SessionConfig, voiceTalks = false): SessionConfig {
+  return { ...config, turnDetection: config.turnDetection === null ? null : 'server', instructions: voiceTalks ? VOICE_INSTRUCTIONS : SPEAKER_INSTRUCTIONS, tools: [] };
 }

@@ -31,6 +31,6 @@
     }
   }
   // Secrets (wrangler secret put): VDOC_SERVER_SIGNING_KEYS, VDOC_SERVER_CLIENTS, BOSON_API_KEY, ANTHROPIC_API_KEY
-  // (or ANTHROPIC_API_KEY + OPENAI_API_KEY for VDOC_SERVER_MODEL=cascade-claude),
+  // (or ANTHROPIC_API_KEY + OPENAI_API_KEY for VDOC_SERVER_MODEL=cascade-claude or live-worker),
   // and optionally VDOC_SERVER_ALLOWED_ORIGINS. Use apps/worker for local development and its .dev.vars file.
 }

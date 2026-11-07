@@ -16,7 +16,11 @@ export interface ServerConfig {
   readonly allowedOrigins: readonly string[];
   readonly model: ModelChoice;
   readonly providerKeys: { readonly boson?: string; readonly openai?: string; readonly anthropic?: string };
-  readonly workerAgent: { readonly model: string; readonly thinking: WorkerThinking; readonly prefetch: boolean; readonly timeoutMs: number; readonly maxRequests: number };
+  readonly workerAgent: {
+    readonly model: string; readonly thinking: WorkerThinking; readonly prefetch: boolean; readonly timeoutMs: number; readonly maxRequests: number;
+    /** Set when a talker answers the turns that are not edits; unset, Pi answers every turn. */
+    readonly talker?: { readonly model: string; readonly routerModel: string };
+  };
   readonly concurrency: ConcurrencyStrategy;
   readonly limits: SessionLimits;
   /** Development-only defaults that were filled in (logged at startup). */
@@ -26,7 +30,7 @@ export interface ServerConfig {
 export type Env = Readonly<Record<string, string | undefined>>;
 
 const DEV_CLIENT_KEY = 'vdoc-dev-client-key-not-for-production';
-const MODELS = new Set(['boson', 'boson-worker', 'openai', 'cascade-claude', 'fake']);
+const MODELS = new Set(['boson', 'boson-worker', 'live-worker', 'openai', 'cascade-claude', 'fake']);
 
 /**
  * Parses and validates configuration in one pass and reports every problem at
@@ -82,12 +86,15 @@ export function loadConfig(env: Env): { ok: true; value: ServerConfig } | { ok: 
   if (provider === 'cascade-claude' && !providerKeys.anthropic) errors.push('ANTHROPIC_API_KEY is required for the cascade-claude model.');
   if (provider === 'cascade-claude' && !providerKeys.openai) errors.push('OPENAI_API_KEY is required for the cascade-claude model (speech recognition and synthesis).');
   if (provider === 'boson-worker' && !providerKeys.anthropic) errors.push('ANTHROPIC_API_KEY is required for the boson-worker model.');
+  if (provider === 'live-worker' && !providerKeys.openai) errors.push('OPENAI_API_KEY is required for the live-worker model (GPT-Live is its voice).');
+  if (provider === 'live-worker' && !providerKeys.anthropic) errors.push('ANTHROPIC_API_KEY is required for the live-worker model.');
   const workerAgent = {
     model: env.VDOC_SERVER_WORKER_MODEL ?? 'claude-haiku-5-5',
     thinking: (env.VDOC_SERVER_WORKER_THINKING ?? 'off') as WorkerThinking,
     prefetch: env.VDOC_SERVER_WORKER_PREFETCH !== 'false',
     timeoutMs: integer(env.VDOC_SERVER_WORKER_TIMEOUT_MS, 90_000, errors, 'VDOC_SERVER_WORKER_TIMEOUT_MS'),
     maxRequests: integer(env.VDOC_SERVER_WORKER_MAX_REQUESTS, 12, errors, 'VDOC_SERVER_WORKER_MAX_REQUESTS'),
+    ...(env.VDOC_SERVER_TALKER_MODEL ? { talker: { model: env.VDOC_SERVER_TALKER_MODEL, routerModel: env.VDOC_SERVER_ROUTER_MODEL ?? 'claude-haiku-5-5' } } : {}),
   };
   if (!workerAgent.model.trim()) errors.push('VDOC_SERVER_WORKER_MODEL cannot be empty.');
   if (!WORKER_THINKING.has(workerAgent.thinking)) errors.push('VDOC_SERVER_WORKER_THINKING must be off, low, medium or high.');
