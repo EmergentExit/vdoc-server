@@ -5,7 +5,7 @@ import type { StreamFn } from '@earendil-works/pi-agent-core';
 import { RealtimeError, startSession, type AgentSession, type ToolSpec } from '@vrealtime/core';
 import { fakeModel, type FakeModel } from '@vrealtime/testing';
 import { HIGH_RISK_CONFIRMATION_MESSAGE } from '@vdoc-server/domain';
-import { createPiWorker, delegatedModel, type UtteranceJudge, type WorkerRunner } from '../src';
+import { createPiWorker, delegatedModel, type Conversation, type Talker, type UtteranceJudge, type UtteranceRoute, type WorkerRunner } from '../src';
 import { thinkingBetweenToolsOnly } from '../src/worker/pi-worker';
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -58,9 +58,9 @@ function speakerModel(status: 'done' | 'failed' | 'cancelled' = 'done') {
     });
   } });
 }
-async function setup(worker: WorkerRunner, options: { beforeToolCall?: (name: string) => boolean | string; timeout?: number; transcriptTimeout?: number; finishTools?: boolean; judge?: UtteranceJudge; actor?: FakeModel; text?: string | null; tools?: ToolSpec[] } = {}) {
+async function setup(worker: WorkerRunner, options: { beforeToolCall?: (name: string) => boolean | string; timeout?: number; transcriptTimeout?: number; finishTools?: boolean; judge?: UtteranceJudge; actor?: FakeModel; text?: string | null; tools?: ToolSpec[]; conversation?: Conversation } = {}) {
   const actor = options.actor ?? speakerModel();
-  const model = delegatedModel(actor, worker, options.timeout ?? 1000, options.transcriptTimeout ?? 1000, options.judge);
+  const model = delegatedModel(actor, worker, options.timeout ?? 1000, options.transcriptTimeout ?? 1000, options.judge, options.conversation);
   const calls: { name: string; callId: string; args: unknown }[] = [];
   const text: string[] = [];
   const notices: string[] = [];
@@ -706,4 +706,125 @@ it('does not carry an ordinary rejection forward as awaiting confirmation', asyn
   h.session.sendText('下一件事');
   await expect.poll(() => prompts.length).toBe(2);
   expect(JSON.parse(prompts[1]!).previousTasks.at(-1)).not.toHaveProperty('awaitingConfirmation');
+});
+
+/** A talker that says `reply` in two pieces and records what it was asked. */
+function scriptedTalker(reply = '第三章可以分成方法和结果两节。要我按这个改吗？') {
+  const asked: Parameters<Talker['reply']>[0][] = [];
+  const talker: Talker = { async reply(request, context) {
+    asked.push(request);
+    context.emit(reply.slice(0, 4)); context.emit(reply.slice(4));
+    return reply;
+  } };
+  return { talker, asked };
+}
+const routeTo = (route: UtteranceRoute, wait: Promise<unknown> = Promise.resolve()) => ({ route: async () => { await wait; return route; } });
+
+it('hands a turn that is not an edit to the talker, with the document Pi read first, and lets a later yes reach Pi with the talk in its history', async () => {
+  const { worker, requests } = scriptedWorker([write, done], { prefetch: true });
+  const { talker, asked } = scriptedTalker();
+  let route: UtteranceRoute = 'discuss';
+  const h = await setup(worker, { text: '第三章应该怎么组织？', conversation: { router: { route: async () => route }, talker } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(h.errors).toEqual([]);
+  // Pi was stopped after its read: no model request, no write.
+  expect(h.calls.map(call => call.name)).toEqual(['read_document']);
+  expect(requests).toHaveLength(0);
+  expect(asked).toEqual([{ route: 'discuss', utterance: '第三章应该怎么组织？', document: { ok: true, revision: 7 }, conversation: [] }]);
+  expect(h.text.join('')).toBe('第三章可以分成方法和结果两节。要我按这个改吗？');
+  expect(h.voice).toEqual(['第三章可以分成方法和结果两节。要我按这个改吗？']);
+
+  route = 'act';
+  h.session.sendText('好，就这么改');
+  await expect.poll(() => h.ended.mock.calls.length).toBe(2);
+  expect(h.calls.map(call => call.name)).toEqual(['read_document', 'read_document', 'insert_structured_article']);
+  expect(asked).toHaveLength(1);
+  expect(sent(requests[0]).task).toMatchObject({ userRequest: '好，就这么改', previousTasks: [{ request: '第三章应该怎么组织？', reply: '第三章可以分成方法和结果两节。要我按这个改吗？', by: 'talker' }] });
+  expect(h.voice.at(-1)).toBe('文章已写入。');
+});
+
+it('keeps Pi on a turn routed as an edit and never asks the talker', async () => {
+  const { worker } = scriptedWorker([read, write, done]);
+  const { talker, asked } = scriptedTalker();
+  const h = await setup(worker, { conversation: { router: routeTo('act'), talker } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(h.calls.map(call => call.name)).toEqual(['read_document', 'insert_structured_article']);
+  expect(asked).toEqual([]);
+  expect(h.voice).toEqual(['文章已写入。']);
+});
+
+it('lets Pi finish when it has already written by the time a late route says the turn was talk', async () => {
+  let release!: () => void;
+  const late = new Promise<void>(resolve => { release = resolve; });
+  const { worker } = scriptedWorker([read, write, done]);
+  const { talker, asked } = scriptedTalker();
+  const h = await setup(worker, { conversation: { router: routeTo('chat', late), talker } });
+  await expect.poll(() => h.calls.length).toBe(2);
+  release();
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(asked).toEqual([]);
+  expect(h.voice).toEqual(['文章已写入。']);
+});
+
+it('answers small talk without the document', async () => {
+  const { worker } = scriptedWorker([done], { prefetch: true });
+  const { talker, asked } = scriptedTalker('你好！');
+  const h = await setup(worker, { text: '你好', conversation: { router: routeTo('chat'), talker } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(asked[0]).toEqual({ route: 'chat', utterance: '你好', conversation: [] });
+  expect(h.voice).toEqual(['你好！']);
+});
+
+/** A voice that talks for itself (GPT-Live): whatever it is handed, it says as its own reply. */
+function talkingVoice() {
+  let number = 0;
+  return fakeModel({ capabilities: { tools: { autoReplyAfterResult: false } }, onCommand(command, session) {
+    if (command.type !== 'sendText') return;
+    const responseId = `voice-${++number}`;
+    queueMicrotask(() => {
+      session.emit({ type: 'response.start', responseId });
+      session.emit({ type: 'output.transcript', responseId, itemId: `${responseId}-voice`, delta: command.text });
+      session.emit({ type: 'response.end', responseId, status: 'done', stopReason: 'completed' });
+    });
+  } });
+}
+
+it('hands the work\'s reply to a voice that talks for itself, plainly, and ends the turn when it has said it', async () => {
+  const { worker } = scriptedWorker([read, write, done]);
+  const { talker, asked } = scriptedTalker();
+  const h = await setup(worker, { actor: talkingVoice(), conversation: { router: routeTo('act'), talker, voiceTalks: true } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(h.errors).toEqual([]);
+  expect(h.calls.map(call => call.name)).toEqual(['read_document', 'insert_structured_article']);
+  expect(asked).toEqual([]);
+  expect(h.actor.session.commandsOf('sendText').map(command => command.text)).toEqual(['文章已写入。']);
+  expect(h.actor.session.commandsOf('connect')[0]!.config.instructions).toContain('绝不说已经改好');
+  expect(h.voice).toEqual(['文章已写入。']);
+});
+
+it('leaves small talk to a voice that talks for itself: Pi stops, nobody else answers, and its own reply reaches the user', async () => {
+  const { worker, requests } = scriptedWorker([done], { prefetch: true });
+  const { talker, asked } = scriptedTalker();
+  const actor = talkingVoice();
+  const h = await setup(worker, { actor, text: '你好', conversation: { router: routeTo('chat'), talker, voiceTalks: true } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(requests).toHaveLength(0);
+  expect(asked).toEqual([]);
+  expect(actor.session.commandsOf('sendText')).toEqual([]);
+  // The voice's own answer passes through as a reply of its own.
+  actor.session.emit({ type: 'response.start', responseId: 'own-1' });
+  actor.session.emit({ type: 'output.transcript', responseId: 'own-1', itemId: 'own-1-voice', delta: '你好呀！' });
+  actor.session.emit({ type: 'response.end', responseId: 'own-1', status: 'done', stopReason: 'completed' });
+  await expect.poll(() => h.voice).toEqual(['你好呀！']);
+  await expect.poll(() => h.ended.mock.calls.length).toBe(2);
+});
+
+it('has a voice that talks for itself say the talker\'s answer to a discussion', async () => {
+  const { worker } = scriptedWorker([write, done], { prefetch: true });
+  const { talker, asked } = scriptedTalker();
+  const h = await setup(worker, { actor: talkingVoice(), text: '第三章应该怎么组织？', conversation: { router: routeTo('discuss'), talker, voiceTalks: true } });
+  await expect.poll(() => h.ended.mock.calls.length).toBe(1);
+  expect(asked[0]).toMatchObject({ route: 'discuss', document: { ok: true, revision: 7 } });
+  expect(h.actor.session.commandsOf('sendText').map(command => command.text)).toEqual(['第三章可以分成方法和结果两节。要我按这个改吗？']);
+  expect(h.calls.map(call => call.name)).toEqual(['read_document']);
 });

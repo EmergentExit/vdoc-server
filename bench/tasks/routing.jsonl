@@ -1,0 +1,100 @@
+{"id":"R-ACT-001","label":"act","utterance":"帮我把第二段删掉"}
+{"id":"R-ACT-002","label":"act","utterance":"标题改成实验报告"}
+{"id":"R-ACT-003","label":"act","utterance":"那个周五换成周六吧"}
+{"id":"R-ACT-004","label":"act","utterance":"给第三段加个小标题，叫研究方法"}
+{"id":"R-ACT-005","label":"act","utterance":"写一段关于数据集的介绍放在最后"}
+{"id":"R-ACT-006","label":"act","utterance":"把刚才那句加粗"}
+{"id":"R-ACT-007","label":"act","utterance":"列一个三点的提纲放到文档开头"}
+{"id":"R-ACT-008","label":"act","utterance":"做一个表格，比较一下这三种方法的延迟"}
+{"id":"R-ACT-009","label":"act","utterance":"第一段太长了，帮我压缩到一百字以内"}
+{"id":"R-ACT-010","label":"act","utterance":"撤销刚才的修改"}
+{"id":"R-ACT-011","label":"act","utterance":"把全文的模型都换成系统"}
+{"id":"R-ACT-012","label":"act","utterance":"在引言后面加一段研究动机"}
+{"id":"R-ACT-013","label":"act","utterance":"好，就按你说的这个提纲写"}
+{"id":"R-ACT-014","label":"act","utterance":"可以，那就这么改吧"}
+{"id":"R-ACT-015","label":"act","utterance":"按刚才讨论的，把第三章重写一下"}
+{"id":"R-ACT-016","label":"act","utterance":"把这三段变成编号列表"}
+{"id":"R-ACT-017","label":"act","utterance":"帮我润色一下摘要"}
+{"id":"R-ACT-018","label":"act","utterance":"把结论那段翻译成英文"}
+{"id":"R-ACT-019","label":"act","utterance":"第二段和第三段换个位置"}
+{"id":"R-ACT-020","label":"act","utterance":"给我写个开头，大概两三句"}
+{"id":"R-ACT-021","label":"act","utterance":"把红色的字都改回黑色"}
+{"id":"R-ACT-022","label":"act","utterance":"新建一份会议纪要"}
+{"id":"R-ACT-023","label":"act","utterance":"在最后补一句致谢"}
+{"id":"R-ACT-024","label":"act","utterance":"把我选中的这句改得正式一点"}
+{"id":"R-ACT-025","label":"act","utterance":"确认，删吧"}
+{"id":"R-ACT-026","label":"act","utterance":"是的，全部替换"}
+{"id":"R-ACT-027","label":"act","utterance":"把实验结果那段的数字改成百分比"}
+{"id":"R-ACT-028","label":"act","utterance":"帮我加三条参考文献的占位"}
+{"id":"R-ACT-029","label":"act","utterance":"把标题居中，再调大一点"}
+{"id":"R-ACT-030","label":"act","utterance":"相关工作那节写得太散了，帮我重新组织一下"}
+{"id":"R-ACT-031","label":"act","utterance":"把 related work 改成中文"}
+{"id":"R-ACT-032","label":"act","utterance":"make the title bold"}
+{"id":"R-ACT-033","label":"act","utterance":"把第四段的错别字改一下"}
+{"id":"R-ACT-034","label":"act","utterance":"给每一节都加一个一句话的小结"}
+{"id":"R-ACT-035","label":"act","utterance":"把文档清空，重新写一个大纲"}
+{"id":"R-ACT-036","label":"act","utterance":"这句不对，改成延迟降低了三秒"}
+{"id":"R-ACT-037","label":"act","utterance":"帮我把讨论部分扩写一下，写多一点"}
+{"id":"R-ACT-038","label":"act","utterance":"高亮所有提到 Pi 的地方"}
+{"id":"R-ACT-039","label":"act","utterance":"把你刚才说的三点写进去"}
+{"id":"R-ACT-040","label":"act","utterance":"在方法那节插入一个流程说明"}
+{"id":"R-DIS-001","label":"discuss","utterance":"你觉得我这篇论文的第三章应该怎么组织？"}
+{"id":"R-DIS-002","label":"discuss","utterance":"我现在的实验够不够支撑结论？"}
+{"id":"R-DIS-003","label":"discuss","utterance":"这段写得怎么样，有什么问题吗"}
+{"id":"R-DIS-004","label":"discuss","utterance":"审稿人可能会问什么问题"}
+{"id":"R-DIS-005","label":"discuss","utterance":"我应该再补什么实验比较好"}
+{"id":"R-DIS-006","label":"discuss","utterance":"摘要里要不要写具体的数字？"}
+{"id":"R-DIS-007","label":"discuss","utterance":"帮我想想论文的题目有哪些选择"}
+{"id":"R-DIS-008","label":"discuss","utterance":"相关工作一般要分几类来写"}
+{"id":"R-DIS-009","label":"discuss","utterance":"消融实验和对比实验有什么区别"}
+{"id":"R-DIS-010","label":"discuss","utterance":"我们的方法和 Talker-Reasoner 有什么不同"}
+{"id":"R-DIS-011","label":"discuss","utterance":"你觉得先写方法还是先写实验"}
+{"id":"R-DIS-012","label":"discuss","utterance":"这个结果显著吗，置信区间怎么解释"}
+{"id":"R-DIS-013","label":"discuss","utterance":"文档里第二段在说什么"}
+{"id":"R-DIS-014","label":"discuss","utterance":"我这篇文章现在有多少字"}
+{"id":"R-DIS-015","label":"discuss","utterance":"这一章的逻辑顺不顺"}
+{"id":"R-DIS-016","label":"discuss","utterance":"我们要不要把成本也写进论文里"}
+{"id":"R-DIS-017","label":"discuss","utterance":"怎么解释 S2 为什么更慢"}
+{"id":"R-DIS-018","label":"discuss","utterance":"你帮我分析一下这三个方案的优缺点"}
+{"id":"R-DIS-019","label":"discuss","utterance":"投哪个会议比较合适"}
+{"id":"R-DIS-020","label":"discuss","utterance":"引言的第一句怎么写比较抓人，你给我几个思路"}
+{"id":"R-DIS-021","label":"discuss","utterance":"如果审稿人说样本太少，我们怎么回应"}
+{"id":"R-DIS-022","label":"discuss","utterance":"这里用表格好还是用图好"}
+{"id":"R-DIS-023","label":"discuss","utterance":"什么是 bootstrap 置信区间"}
+{"id":"R-DIS-024","label":"discuss","utterance":"我现在写到哪了，下一步该干什么"}
+{"id":"R-DIS-025","label":"discuss","utterance":"结论部分是不是写得太保守了"}
+{"id":"R-DIS-026","label":"discuss","utterance":"你能跟我讲讲 Actor Worker 架构吗"}
+{"id":"R-DIS-027","label":"discuss","utterance":"论文的贡献点应该怎么总结"}
+{"id":"R-DIS-028","label":"discuss","utterance":"第一章和第二章是不是有重复"}
+{"id":"R-DIS-029","label":"discuss","utterance":"我们先讨论一下，不要改文档，实验部分怎么写"}
+{"id":"R-DIS-030","label":"discuss","utterance":"这个延迟降低三秒算多吗"}
+{"id":"R-DIS-031","label":"discuss","utterance":"what should the limitations section cover"}
+{"id":"R-DIS-032","label":"discuss","utterance":"你先别动，跟我说说你打算怎么改"}
+{"id":"R-DIS-033","label":"discuss","utterance":"标题这样起会不会太长"}
+{"id":"R-DIS-034","label":"discuss","utterance":"我们的数据能说明架构比模型更重要吗"}
+{"id":"R-DIS-035","label":"discuss","utterance":"为什么要用任务级别的 bootstrap"}
+{"id":"R-DIS-036","label":"discuss","utterance":"你觉得哪部分最弱"}
+{"id":"R-DIS-037","label":"discuss","utterance":"这个图应该放在哪一节"}
+{"id":"R-DIS-038","label":"discuss","utterance":"给我讲讲这篇文档的结构"}
+{"id":"R-DIS-039","label":"discuss","utterance":"论文一般多少页合适"}
+{"id":"R-DIS-040","label":"discuss","utterance":"写方法的时候要注意什么"}
+{"id":"R-CHAT-001","label":"chat","utterance":"你好"}
+{"id":"R-CHAT-002","label":"chat","utterance":"在吗"}
+{"id":"R-CHAT-003","label":"chat","utterance":"谢谢你"}
+{"id":"R-CHAT-004","label":"chat","utterance":"今天写得好累啊"}
+{"id":"R-CHAT-005","label":"chat","utterance":"你是谁"}
+{"id":"R-CHAT-006","label":"chat","utterance":"你能听到我说话吗"}
+{"id":"R-CHAT-007","label":"chat","utterance":"哈哈哈，挺好的"}
+{"id":"R-CHAT-008","label":"chat","utterance":"我先去吃个饭"}
+{"id":"R-CHAT-009","label":"chat","utterance":"你都能做什么"}
+{"id":"R-CHAT-010","label":"chat","utterance":"早上好"}
+{"id":"R-CHAT-011","label":"chat","utterance":"辛苦了"}
+{"id":"R-CHAT-012","label":"chat","utterance":"现在几点了"}
+{"id":"R-CHAT-013","label":"chat","utterance":"等我一下"}
+{"id":"R-CHAT-014","label":"chat","utterance":"你声音挺好听的"}
+{"id":"R-CHAT-015","label":"chat","utterance":"我们聊聊天吧"}
+{"id":"R-CHAT-016","label":"chat","utterance":"明天截稿，好紧张"}
+{"id":"R-CHAT-017","label":"chat","utterance":"OK 拜拜"}
+{"id":"R-CHAT-018","label":"chat","utterance":"测试一下，一二三"}
+{"id":"R-CHAT-019","label":"chat","utterance":"你今天怎么样"}
+{"id":"R-CHAT-020","label":"chat","utterance":"晚安"}

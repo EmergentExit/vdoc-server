@@ -86,6 +86,7 @@ export class DocumentVoiceRoom extends DurableObject<Env> {
           bosonApiKey: config.value.providerKeys.boson,
           bosonSocket: fetchSocket(),
           openaiApiKey: config.value.providerKeys.openai,
+          openaiSocket: fetchSocket(),
           anthropicApiKey: config.value.providerKeys.anthropic,
           workerAgent: config.value.workerAgent,
           fake: config.value.environment === 'production' ? false : {},

@@ -181,3 +181,11 @@ Worker failures are never retried by replaying the task. Successfully acknowledg
 The local UI retains the specific task error when the runtime subsequently sends its generic Generation stopped terminator. A lone generic failure gets a useful fallback message directing the user to inspect document/tool results before retrying unfinished work. Stage-prefixed server progress is shown in the status area. This is an application adapter/UI fix; no vRT source or protocol change.
 
 Tests cover missing/wrong-tool delegation followed by a successful single repair, repair exhaustion, an already-applied write followed by Pi failure, voice-only failure after editing, and primary-error preservation.
+
+## 意图路由、对话者与 GPT-Live 前台
+
+设计、实测数据和后续计划见 [TALKER_WORKER_PLAN.md](TALKER_WORKER_PLAN.md)。
+
+- **意图路由**（`utterance-router.ts`）：每句话的最终转写一到，Pi 照常立刻开始（含预取），同时 Haiku 判断这句是 `act`（改文档）、`discuss`（讨论、提问）还是 `chat`（闲聊）。拿不准或出错一律按 `act`。改文档不等路由，所以不会变慢；只有判为不改文档、且 Pi 还没写入时才停掉 Pi。
+- **对话者**（`talker.ts`）：`discuss` 和 `chat` 交给 Claude 回答，`discuss` 带上 Pi 预取到的文档。对话者不改文档，提出修改方案后会问用户要不要改；它说过的话进入共享记录，用户说"就这么改"时 Pi 在 `previousTasks` 里看得到。
+- **GPT-Live 前台**（`providers/gpt-live.ts`，`VDOC_SERVER_MODEL=live-worker`）：GPT-Live-1 全双工地听和说。服务端不依赖它自己的委派（实测 18 条改文档请求只委派了 9 条），而是按转写启动 Pi：一句话在最后一个字到达后再过 650 ms 音频没有新字才算说完（字的时间戳比我们发送的音频慢约半秒，能量 VAD 会漏掉轻声的末字）。闲聊由 GPT-Live 自己回答；Pi 和对话者的结果通过 `session.commentary.append` 交给它，用自己的话说出来。

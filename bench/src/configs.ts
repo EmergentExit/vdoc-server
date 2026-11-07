@@ -21,6 +21,8 @@ export const CONFIGS: readonly SystemConfig[] = [
   { id: 'S3-think-low', group: 'G1', description: 'S3 with low thinking', env: { ...S3, VDOC_SERVER_WORKER_THINKING: 'low' } },
   { id: 'S3-think-medium', group: 'G1', description: 'S3 with medium thinking', env: { ...S3, VDOC_SERVER_WORKER_THINKING: 'medium' } },
   { id: 'S3-think-high', group: 'G1', description: 'S3 with high thinking', env: { ...S3, VDOC_SERVER_WORKER_THINKING: 'high' } },
+  { id: 'S3-talker', group: 'G1', description: 'S3 plus the router and a Claude talker for turns that are not edits (Pi still starts on every turn)', env: { ...S3, VDOC_SERVER_TALKER_MODEL: 'claude-opus-5-5' } },
+  { id: 'L3', group: 'G1', description: 'GPT-Live-1 listens and talks; the server routes each turn, Pi edits and a Claude talker discusses', env: { VDOC_SERVER_MODEL: 'live-worker', VDOC_SERVER_TALKER_MODEL: 'claude-opus-5-5' } },
   { id: 'S3-sonnet', group: 'G1', description: 'S3 with Sonnet 5.5 (thinking "off" becomes between_tools)', env: { ...S3, VDOC_SERVER_WORKER_MODEL: 'claude-sonnet-5-5' } },
   { id: 'S3-nobatch', group: 'G1', description: 'S3 without the batch-edits rule', env: S3, missing: 'a switch for the batch rule in delegated-model.ts' },
   { id: 'S3-olddelegation', group: 'G1', description: 'Higgs delegates through run_worker_agent (74228068)', env: S3, missing: 'a run against a checkout of 74228068' },
